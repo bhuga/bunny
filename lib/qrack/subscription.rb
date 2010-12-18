@@ -70,7 +70,7 @@ module Qrack
 			  # If maximum frame size is smaller than message payload body then message
 				# will have a message header and several message bodies				
 			  msg = ''
-				while msg.length < header.size
+				while msg.bytesize < header.size
 					msg += client.next_payload
 				end
 
