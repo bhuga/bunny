@@ -14,7 +14,7 @@ Queues must be attached to at least one exchange in order to receive messages fr
 	  def initialize(client, name, opts = {})
 			# check connection to server
 			raise Bunny::ConnectionError, 'Not connected to server' if client.status == :not_connected
-			
+		  raise ArgumentError, "Must provide a queue name in nowait mode" if name.nil?
 	    @client = client
 	    @opts   = opts
       @delivery_tag = nil
@@ -31,19 +31,12 @@ Queues must be attached to at least one exchange in order to receive messages fr
         }.merge(opts)
       end
 	
-			# ignore the :nowait option if passed, otherwise program will hang waiting for a
-			# response that will not be sent by the server
-			opts.delete(:nowait)
-			
+		  # always be nowait
 	    client.send_frame(
-	      Qrack::Protocol::Queue::Declare.new({ :queue => name || '', :nowait => false }.merge(opts))
+	      Qrack::Protocol::Queue::Declare.new({ :queue => name || '', :nowait => true }.merge(opts))
 	    )
 	
-      method = client.next_method
-
-			client.check_response(method,	Qrack::Protocol::Queue::DeclareOk, "Error declaring queue #{name}")
-
-      @name = method.queue
+      @name = name
 			client.queues[@name] = self
 	  end
 
@@ -100,23 +93,14 @@ bound to the direct exchange '' by default. If error occurs, a _Bunny_::_Protoco
 	  def bind(exchange, opts = {})
 	    exchange           = exchange.respond_to?(:name) ? exchange.name : exchange
 
-			# ignore the :nowait option if passed, otherwise program will hang waiting for a
-			# response that will not be sent by the server
-			opts.delete(:nowait)
-
+      # force nowait
 	    client.send_frame(
 	      Qrack::Protocol::Queue::Bind.new({ :queue => name,
 		 																:exchange => exchange,
 		 																:routing_key => opts.delete(:key),
-		 																:nowait => false }.merge(opts))
+		 																:nowait => true }.merge(opts))
 	    )
-	
-			method = client.next_method
 
-			client.check_response(method,	Qrack::Protocol::Queue::BindOk,
-				"Error binding queue: #{name} to exchange: #{exchange}")
-
-			# return message
 			:bind_ok
 	  end
 	
@@ -208,7 +192,7 @@ will be nil.
 			if method.is_a?(Qrack::Protocol::Basic::GetEmpty) then
 				queue_empty = true
 			elsif	!method.is_a?(Qrack::Protocol::Basic::GetOk)
-				raise Bunny::ProtocolError, "Error getting message from queue #{name}"
+				raise Bunny::ProtocolError, "Error getting message from queue #{name}: #{method.class} #{method.inspect}"
 			end
 			
 			if !queue_empty
@@ -320,16 +304,11 @@ the server will not send any more messages for that consumer.
 			# Must have consumer tag to tell server what to unsubscribe
 			raise Bunny::UnsubscribeError,
 				"No consumer tag received" if !consumer_tag
-			
-      # Cancel consumer
+
+      # force nowait
       client.send_frame( Qrack::Protocol::Basic::Cancel.new(:consumer_tag => consumer_tag,
-																														:nowait => false))
+																														:nowait => true))
 																														
-			method = client.next_method
-
-			client.check_response(method,	Qrack::Protocol::Basic::CancelOk,
-				"Error unsubscribing from queue #{name}")
-
 			# Reset subscription
 			@subscription = nil
 				
